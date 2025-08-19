@@ -1,0 +1,267 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../services/print_service.dart';
+import '../services/sync_service.dart';
+import 'pro_config_screen.dart';
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Impostazioni'),
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(
+        children: [
+          const _SectionHeader('Informazioni App'),
+          ListTile(
+            leading: const Icon(Icons.info),
+            title: const Text('TickEat'),
+            subtitle: const Text('Versione 1.0.0 - Registratore di Cassa per Eventi'),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'BASE',
+                style: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+          
+          const Divider(),
+          const _SectionHeader('Stampa'),
+          ListTile(
+            leading: const Icon(Icons.print),
+            title: const Text('Test Stampante'),
+            subtitle: const Text('Verifica connessione stampante termica'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _testPrinter(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.bluetooth),
+            title: const Text('Configura Stampante'),
+            subtitle: const Text('Impostazioni stampante Bluetooth/USB'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showPrinterConfig(context),
+          ),
+          
+          const Divider(),
+          const _SectionHeader('Versione PRO'),
+          Consumer<SyncService>(
+            builder: (context, syncService, child) {
+              return ListTile(
+                leading: Icon(
+                  syncService.isConnected ? Icons.cloud_done : Icons.cloud_upload,
+                  color: syncService.isConnected ? Colors.green : null,
+                ),
+                title: Text(syncService.isConnected ? 'Modalità PRO Attiva' : 'Configura PRO'),
+                subtitle: Text(
+                  syncService.isConnected 
+                      ? 'Multi-dispositivo sincronizzato'
+                      : 'Multi-dispositivo e sincronizzazione',
+                ),
+                trailing: syncService.isConnected 
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProConfigScreen()),
+                ),
+              );
+            },
+          ),
+          
+          const Divider(),
+          const _SectionHeader('Supporto'),
+          ListTile(
+            leading: const Icon(Icons.help),
+            title: const Text('Guida'),
+            subtitle: const Text('Come utilizzare TickEat'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showHelp(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.bug_report),
+            title: const Text('Segnala Problema'),
+            subtitle: const Text('Aiutaci a migliorare l\'app'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _reportIssue(context),
+          ),
+          
+          const SizedBox(height: 32),
+          const Center(
+            child: Text(
+              '© 2024 TickEat - Sviluppato per sagre e feste',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testPrinter(BuildContext context) async {
+    final printService = PrintService();
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Test stampante in corso...'),
+          ],
+        ),
+      ),
+    );
+
+    final success = await printService.testPrinterConnection();
+    
+    if (context.mounted) {
+      Navigator.pop(context);
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(success ? 'Test Riuscito' : 'Test Fallito'),
+          content: Text(
+            success 
+                ? 'La stampante è collegata e funzionante'
+                : 'Impossibile connettersi alla stampante.\nVerifica che sia accesa e collegata.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _showPrinterConfig(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Configurazione Stampante'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Configurazione stampante termica'),
+            SizedBox(height: 16),
+            Text('Funzionalità disponibile in una versione futura.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+
+  void _showHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Guida Rapida'),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Come utilizzare TickEat:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('1. Aggiungi prodotti nella sezione "Prodotti"'),
+              Text('2. Seleziona prodotti dal menu principale'),
+              Text('3. Verifica il carrello'),
+              Text('4. Procedi al pagamento'),
+              Text('5. Stampa il biglietto'),
+              SizedBox(height: 16),
+              Text(
+                'Report:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('• Visualizza vendite giornaliere'),
+              Text('• Esporta dati in CSV/PDF'),
+              Text('• Reset dati a fine giornata'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _reportIssue(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Segnala Problema'),
+        content: const Text(
+          'Per segnalare un problema o richiedere assistenza, '
+          'contatta il supporto tecnico con una descrizione dettagliata del problema.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annulla'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Grazie per il feedback!')),
+              );
+            },
+            child: const Text('Invia'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+
+  const _SectionHeader(this.title);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: Colors.blue[700],
+        ),
+      ),
+    );
+  }
+}
