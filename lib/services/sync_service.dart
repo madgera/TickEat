@@ -23,7 +23,7 @@ class SyncService extends ChangeNotifier {
   
   // Stato
   ConnectionStatus _connectionStatus = ConnectionStatus.disconnected;
-  List<Map<String, dynamic>> _pendingSyncData = [];
+  final List<Map<String, dynamic>> _pendingSyncData = [];
   DateTime? _lastSyncTime;
 
   // Getters
@@ -40,6 +40,90 @@ class SyncService extends ChangeNotifier {
     if (_serverUrl != null && _deviceId != null) {
       await _connectToServer();
     }
+  }
+
+  // Test connessione server (utility diagnostica)
+  Future<Map<String, dynamic>> testConnection(String serverUrl) async {
+    final result = <String, dynamic>{
+      'success': false,
+      'message': '',
+      'details': <String, dynamic>{},
+      'suggestions': <String>[],
+    };
+
+    try {
+      if (kDebugMode) {
+        print('Testing connection to: $serverUrl');
+      }
+
+      final uri = Uri.parse('$serverUrl/api/health');
+      result['details']['url'] = uri.toString();
+      result['details']['host'] = uri.host;
+      result['details']['port'] = uri.port;
+
+      final stopwatch = Stopwatch()..start();
+      
+      final response = await http.get(
+        uri,
+        headers: {
+          'Device-ID': 'TEST_DEVICE',
+          'Device-Name': 'Test Client',
+        },
+      ).timeout(const Duration(seconds: 15));
+
+      stopwatch.stop();
+      result['details']['responseTime'] = '${stopwatch.elapsedMilliseconds}ms';
+      result['details']['statusCode'] = response.statusCode;
+      result['details']['responseBody'] = response.body;
+
+      if (response.statusCode == 200) {
+        result['success'] = true;
+        result['message'] = 'Connessione al server riuscita!';
+        
+        try {
+          final serverInfo = json.decode(response.body);
+          result['details']['serverInfo'] = serverInfo;
+        } catch (e) {
+          // Ignore JSON parsing errors
+        }
+      } else {
+        result['message'] = 'Server risponde ma con status code ${response.statusCode}';
+        result['suggestions'].add('Verificare che il server TickEat sia correttamente configurato');
+      }
+
+    } catch (e) {
+      result['message'] = 'Errore di connessione: $e';
+      result['details']['error'] = e.toString();
+
+      if (e.toString().contains('TimeoutException')) {
+        result['suggestions'].addAll([
+          'Il server potrebbe non essere in ascolto sull\'indirizzo specificato',
+          'Verificare che il server sia avviato e in esecuzione',
+          'Controllare il firewall di Windows',
+          'Provare con http://localhost:3000 se server e client sono sulla stessa macchina',
+        ]);
+      } else if (e.toString().contains('Connection refused')) {
+        result['suggestions'].addAll([
+          'Il server non è in ascolto sulla porta specificata',
+          'Verificare che il server sia avviato',
+          'Controllare che la porta 3000 non sia occupata da altro software',
+        ]);
+      } else if (e.toString().contains('No route to host')) {
+        result['suggestions'].addAll([
+          'Problema di rete - host non raggiungibile',
+          'Verificare l\'indirizzo IP del server',
+          'Controllare la connessione di rete',
+        ]);
+      } else if (e.toString().contains('SocketException')) {
+        result['suggestions'].addAll([
+          'Errore di rete - controllare la connessione',
+          'Verificare l\'indirizzo IP e la porta',
+          'Il server potrebbe essere spento o non raggiungibile',
+        ]);
+      }
+    }
+
+    return result;
   }
 
   // Configura server per versione PRO
@@ -91,35 +175,87 @@ class SyncService extends ChangeNotifier {
     try {
       _updateConnectionStatus(ConnectionStatus.connecting);
 
-      // Test connessione HTTP prima
-      final response = await http.get(
-        Uri.parse('$_serverUrl/api/health'),
-        headers: {'Device-ID': _deviceId!},
-      ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode != 200) {
-        throw Exception('Server non raggiungibile');
+      if (kDebugMode) {
+        print('Tentativo di connessione a: $_serverUrl');
+        print('Device ID: $_deviceId');
+        print('Device Name: $_deviceName');
       }
 
-      // Connessione WebSocket per aggiornamenti real-time
-      final wsUrl = _serverUrl!.replaceFirst('http', 'ws');
-      _websocket = WebSocketChannel.connect(
-        Uri.parse('$wsUrl/ws?deviceId=$_deviceId'),
-      );
-
-      // Ascolta messaggi
-      _websocket!.stream.listen(
-        _handleWebSocketMessage,
-        onError: (error) {
+      // Test connessione HTTP prima con timeout più lungo e retry
+      http.Response? response;
+      Exception? lastError;
+      
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        try {
           if (kDebugMode) {
-            print('Errore WebSocket: $error');
+            print('Tentativo di connessione $attempt/3...');
           }
-          _updateConnectionStatus(ConnectionStatus.error);
-        },
-        onDone: () {
-          _updateConnectionStatus(ConnectionStatus.disconnected);
-        },
-      );
+          
+          response = await http.get(
+            Uri.parse('$_serverUrl/api/health'),
+            headers: {
+              'Device-ID': _deviceId!,
+              'Device-Name': _deviceName ?? 'Unknown Device',
+            },
+          ).timeout(const Duration(seconds: 20));
+          
+          if (response.statusCode == 200) {
+            if (kDebugMode) {
+              print('Connessione HTTP stabilita (tentativo $attempt)');
+              print('Risposta server: ${response.body}');
+            }
+            break;
+          } else {
+            throw Exception('Status code: ${response.statusCode}');
+          }
+        } catch (e) {
+          lastError = e is Exception ? e : Exception(e.toString());
+          if (kDebugMode) {
+            print('Tentativo $attempt fallito: $e');
+          }
+          if (attempt < 3) {
+            await Future.delayed(Duration(seconds: attempt * 2));
+          }
+        }
+      }
+
+      if (response == null || response.statusCode != 200) {
+        throw lastError ?? Exception('Server non raggiungibile dopo 3 tentativi');
+      }
+
+      // Connessione WebSocket per aggiornamenti real-time (opzionale)
+      try {
+        final wsUrl = _serverUrl!.replaceFirst('http', 'ws');
+        _websocket = WebSocketChannel.connect(
+          Uri.parse('$wsUrl/ws?deviceId=$_deviceId'),
+        );
+
+        // Ascolta messaggi
+        _websocket!.stream.listen(
+          _handleWebSocketMessage,
+          onError: (error) {
+            if (kDebugMode) {
+              print('Errore WebSocket (non critico): $error');
+            }
+            // Non cambiare lo stato di connessione per errori WebSocket
+            // Il client può funzionare solo con HTTP
+          },
+          onDone: () {
+            if (kDebugMode) {
+              print('WebSocket disconnesso');
+            }
+          },
+        );
+
+        if (kDebugMode) {
+          print('WebSocket connesso');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('WebSocket non disponibile (continuando solo con HTTP): $e');
+        }
+        // Continua senza WebSocket, il client può funzionare solo con HTTP
+      }
 
       // Avvia heartbeat
       _startHeartbeat();
@@ -127,12 +263,30 @@ class SyncService extends ChangeNotifier {
       _updateConnectionStatus(ConnectionStatus.connected);
       _lastSyncTime = DateTime.now();
 
+      if (kDebugMode) {
+        print('Connessione al server completata con successo');
+      }
+
       // Sincronizza dati pendenti
       await _syncPendingData();
 
     } catch (e) {
       if (kDebugMode) {
         print('Errore connessione server: $e');
+        
+        // Diagnostica aggiuntiva
+        if (e.toString().contains('TimeoutException')) {
+          print('DIAGNOSTICA: Il server potrebbe non essere in ascolto su $_serverUrl');
+          print('SUGGERIMENTI:');
+          print('1. Verificare che il server sia avviato');
+          print('2. Controllare l\'indirizzo IP e la porta');
+          print('3. Verificare il firewall di Windows');
+          print('4. Provare con http://localhost:3000 se in locale');
+        } else if (e.toString().contains('Connection refused')) {
+          print('DIAGNOSTICA: Connessione rifiutata - server non in ascolto');
+        } else if (e.toString().contains('No route to host')) {
+          print('DIAGNOSTICA: Host non raggiungibile - problema di rete');
+        }
       }
       _updateConnectionStatus(ConnectionStatus.error);
     }

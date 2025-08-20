@@ -53,22 +53,38 @@ class ServerService extends ChangeNotifier {
       // Ottieni l'indirizzo IP locale
       _serverAddress = await _getLocalIPAddress();
       
-      // Avvia il server HTTP con gestione multi-piattaforma
+      // Avvia il server HTTP con binding migliorato
       InternetAddress bindAddress;
       try {
+        // Prova prima a bindare su tutte le interfacce
         bindAddress = InternetAddress.anyIPv4;
+        _httpServer = await HttpServer.bind(bindAddress, _serverPort);
+        
+        if (kDebugMode) {
+          print('TickEat PRO Server avviato su tutte le interfacce (0.0.0.0:$_serverPort)');
+          print('Server raggiungibile su:');
+          print('  - Locale: http://localhost:$_serverPort');
+          print('  - Rete: http://$_serverAddress:$_serverPort');
+          
+          // Mostra tutti gli IP disponibili
+          final interfaces = await NetworkInterface.list();
+          for (final interface in interfaces) {
+            for (final address in interface.addresses) {
+              if (!address.isLoopback && address.type == InternetAddressType.IPv4) {
+                print('  - ${interface.name}: http://${address.address}:$_serverPort');
+              }
+            }
+          }
+        }
       } catch (e) {
         // Fallback per piattaforme che non supportano anyIPv4
         bindAddress = InternetAddress.loopbackIPv4;
+        _httpServer = await HttpServer.bind(bindAddress, _serverPort);
+        
         if (kDebugMode) {
           print('Fallback a loopback address: $e');
+          print('Server avviato solo su localhost:$_serverPort');
         }
-      }
-      
-      _httpServer = await HttpServer.bind(bindAddress, _serverPort);
-      
-      if (kDebugMode) {
-        print('TickEat PRO Server avviato su $_serverAddress:$_serverPort');
       }
 
       // Gestisci le richieste

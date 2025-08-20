@@ -197,7 +197,20 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
                       prefixIcon: Icon(Icons.tablet),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
+                  // Test Connection Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isConfiguring ? null : _testConnection,
+                      icon: const Icon(Icons.wifi_find),
+                      label: const Text('Testa Connessione'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -554,6 +567,107 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
         });
       }
     }
+  }
+
+  Future<void> _testConnection() async {
+    if (_serverUrlController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inserisci l\'URL del server')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isConfiguring = true;
+    });
+
+    try {
+      final syncService = context.read<SyncService>();
+      final result = await syncService.testConnection(_serverUrlController.text.trim());
+
+      if (mounted) {
+        _showConnectionTestResult(result);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Errore durante il test: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isConfiguring = false;
+        });
+      }
+    }
+  }
+
+  void _showConnectionTestResult(Map<String, dynamic> result) {
+    final isSuccess = result['success'] as bool;
+    final message = result['message'] as String;
+    final details = result['details'] as Map<String, dynamic>;
+    final suggestions = result['suggestions'] as List<dynamic>;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              isSuccess ? Icons.check_circle : Icons.error,
+              color: isSuccess ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 8),
+            Text(isSuccess ? 'Test Riuscito' : 'Test Fallito'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(message, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              
+              if (details.isNotEmpty) ...[
+                const Text('Dettagli:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...details.entries.map((entry) => Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 4),
+                  child: Text('${entry.key}: ${entry.value}'),
+                )).toList(),
+                const SizedBox(height: 16),
+              ],
+              
+              if (suggestions.isNotEmpty) ...[
+                const Text('Suggerimenti:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ...suggestions.map((suggestion) => Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 4),
+                  child: Text('• $suggestion'),
+                )).toList(),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Chiudi'),
+          ),
+          if (isSuccess)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _configureProMode();
+              },
+              child: const Text('Procedi alla Connessione'),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _configureProMode() async {
