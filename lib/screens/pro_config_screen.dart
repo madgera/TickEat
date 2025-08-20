@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sync_service.dart';
@@ -229,6 +230,31 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
 
                 // Configurazione Server
                 if (_selectedMode == 'server' && !serverService.isRunning) ...[
+                  // Avviso per piattaforme non supportate
+                  if (kIsWeb) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        border: Border.all(color: Colors.orange),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'La modalità server non è supportata su browser web. '
+                              'Usa l\'app su dispositivo mobile, tablet o desktop.',
+                              style: TextStyle(color: Colors.orange),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   TextField(
                     controller: _deviceNameController,
                     decoration: const InputDecoration(
@@ -253,9 +279,9 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isConfiguring ? null : _startServerMode,
+                      onPressed: (kIsWeb || _isConfiguring) ? null : _startServerMode,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                        backgroundColor: kIsWeb ? Colors.grey : Colors.orange,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
@@ -275,7 +301,7 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
                                 Text('Avviando Server...'),
                               ],
                             )
-                          : const Text('Avvia come Server'),
+                          : Text(kIsWeb ? 'Non Supportato su Web' : 'Avvia come Server'),
                     ),
                   ),
                 ],
@@ -473,9 +499,7 @@ class _ProConfigScreenState extends State<ProConfigScreen> {
     }
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-  }
+
 
   Future<void> _startServerMode() async {
     if (_deviceNameController.text.trim().isEmpty) {

@@ -36,6 +36,15 @@ class ServerService extends ChangeNotifier {
   Future<bool> startServer({int? port}) async {
     if (_status == ServerStatus.running) return true;
 
+    // Controlla se la piattaforma supporta il server HTTP
+    if (kIsWeb) {
+      if (kDebugMode) {
+        print('Modalità server non supportata su web browser');
+      }
+      _updateStatus(ServerStatus.error);
+      return false;
+    }
+
     try {
       _updateStatus(ServerStatus.starting);
       
@@ -44,11 +53,22 @@ class ServerService extends ChangeNotifier {
       // Ottieni l'indirizzo IP locale
       _serverAddress = await _getLocalIPAddress();
       
-      // Avvia il server HTTP
-      _httpServer = await HttpServer.bind(InternetAddress.anyIPv4, _serverPort);
+      // Avvia il server HTTP con gestione multi-piattaforma
+      InternetAddress bindAddress;
+      try {
+        bindAddress = InternetAddress.anyIPv4;
+      } catch (e) {
+        // Fallback per piattaforme che non supportano anyIPv4
+        bindAddress = InternetAddress.loopbackIPv4;
+        if (kDebugMode) {
+          print('Fallback a loopback address: $e');
+        }
+      }
+      
+      _httpServer = await HttpServer.bind(bindAddress, _serverPort);
       
       if (kDebugMode) {
-        print('TickEat PRO Server avviato su ${_serverAddress}:${_serverPort}');
+        print('TickEat PRO Server avviato su $_serverAddress:$_serverPort');
       }
 
       // Gestisci le richieste
@@ -365,17 +385,44 @@ class ServerService extends ChangeNotifier {
 
   // Ottieni indirizzo IP locale
   Future<String> _getLocalIPAddress() async {
+    if (kIsWeb) {
+      return 'localhost'; // Su web non possiamo ottenere l'IP reale
+    }
+    
     try {
       final interfaces = await NetworkInterface.list();
+      
+      // Prima cerca interfacce WiFi/Ethernet
+      for (final interface in interfaces) {
+        if (interface.name.toLowerCase().contains('wlan') || 
+            interface.name.toLowerCase().contains('eth') ||
+            interface.name.toLowerCase().contains('wifi')) {
+          for (final address in interface.addresses) {
+            if (!address.isLoopback && 
+                address.type == InternetAddressType.IPv4 &&
+                !address.address.startsWith('169.254')) { // Evita indirizzi link-local
+              return address.address;
+            }
+          }
+        }
+      }
+      
+      // Fallback: qualsiasi interfaccia IPv4 non-loopback
       for (final interface in interfaces) {
         for (final address in interface.addresses) {
-          if (!address.isLoopback && address.type == InternetAddressType.IPv4) {
+          if (!address.isLoopback && 
+              address.type == InternetAddressType.IPv4 &&
+              !address.address.startsWith('169.254')) {
             return address.address;
           }
         }
       }
+      
       return 'localhost';
     } catch (e) {
+      if (kDebugMode) {
+        print('Errore ottenendo IP locale: $e');
+      }
       return 'localhost';
     }
   }
