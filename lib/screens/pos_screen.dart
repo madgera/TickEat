@@ -38,8 +38,13 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isTablet = screenWidth > 768; // Considera tablet se larghezza > 768px
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    
+    // Logica più granulare per i breakpoint
+    final isPhone = screenWidth < 600;
+    final isSmallTablet = screenWidth >= 600 && screenWidth < 900;
+    final isTablet = screenWidth >= 900;
     
     return Scaffold(
       appBar: AppBar(
@@ -55,18 +60,18 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   if (snapshot.hasData) {
                     final stats = snapshot.data!;
                     return Padding(
-                      padding: const EdgeInsets.all(8.0),
+                      padding: EdgeInsets.all(isPhone ? 4.0 : 8.0),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             'Oggi: €${stats['totalRevenue'].toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: isPhone ? 10 : 12, fontWeight: FontWeight.bold),
                           ),
                           Text(
                             '${stats['totalTransactions']} vendite',
-                            style: const TextStyle(fontSize: 10),
+                            style: TextStyle(fontSize: isPhone ? 8 : 10),
                           ),
                         ],
                       ),
@@ -78,7 +83,7 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             },
           ),
         ],
-        bottom: isTablet ? null : TabBar(
+        bottom: (isPhone || isSmallTablet) ? TabBar(
           controller: _tabController,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -86,14 +91,27 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             Tab(icon: Icon(Icons.store), text: 'Prodotti'),
             Tab(icon: Icon(Icons.shopping_cart), text: 'Carrello'),
           ],
-        ),
+        ) : null,
       ),
-      body: isTablet ? _buildTabletLayout() : _buildMobileLayout(),
-      bottomSheet: isTablet ? null : _buildMobileCartSummary(),
+      body: _buildResponsiveLayout(isPhone, isSmallTablet, isTablet),
     );
   }
 
-  // Layout per tablet (simile al precedente ma migliorato)
+  // Layout responsivo unificato
+  Widget _buildResponsiveLayout(bool isPhone, bool isSmallTablet, bool isTablet) {
+    if (isTablet) {
+      // Layout tablet grande - split view
+      return _buildTabletLayout();
+    } else if (isSmallTablet) {
+      // Layout tablet piccolo - split view verticale o orizzontale
+      return _buildSmallTabletLayout();
+    } else {
+      // Layout phone - tab view senza bottomSheet
+      return _buildPhoneLayout();
+    }
+  }
+
+  // Layout per tablet grande (simile al precedente ma migliorato)
   Widget _buildTabletLayout() {
     return Row(
       children: [
@@ -116,19 +134,36 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Layout per mobile con TabBar
-  Widget _buildMobileLayout() {
-    return Column(
+  // Layout per tablet piccolo
+  Widget _buildSmallTabletLayout() {
+    return Row(
       children: [
+        // Pannello prodotti - più ampio per evitare overflow
         Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              _buildProductsPanel(),
-              _buildCartPanel(),
-            ],
+          flex: 3,
+          child: _buildProductsPanel(),
+        ),
+        // Pannello carrello - più stretto
+        SizedBox(
+          width: 300,
+          child: Container(
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Colors.grey)),
+            ),
+            child: _buildCartPanel(),
           ),
         ),
+      ],
+    );
+  }
+
+  // Layout per phone - SENZA bottomSheet problematico
+  Widget _buildPhoneLayout() {
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        _buildProductsPanel(),
+        _buildMobileOptimizedCartPanel(), // Versione ottimizzata per mobile
       ],
     );
   }
@@ -205,19 +240,31 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Griglia prodotti responsive
+  // Griglia prodotti responsive - MIGLIORATA
   Widget _buildResponsiveProductGrid(List<Product> products) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
     int crossAxisCount;
+    double childAspectRatio;
     
+    // Logica migliorata per i breakpoint
     if (screenWidth > 1200) {
+      crossAxisCount = 5;
+      childAspectRatio = 1.1;
+    } else if (screenWidth > 900) {
       crossAxisCount = 4;
-    } else if (screenWidth > 768) {
-      crossAxisCount = 3;
-    } else if (screenWidth > 480) {
+      childAspectRatio = 1.2;
+    } else if (screenWidth > 600) {
+      // Tablet piccolo - riduciamo le colonne per evitare overflow
       crossAxisCount = 2;
+      childAspectRatio = 1.3;
+    } else if (screenWidth > 400) {
+      crossAxisCount = 2;
+      childAspectRatio = 1.4;
     } else {
+      // Phone molto piccolo
       crossAxisCount = 1;
+      childAspectRatio = 2.0;
     }
 
     if (products.isEmpty) {
@@ -234,12 +281,12 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(screenWidth > 600 ? 16 : 12),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: screenWidth > 768 ? 1.2 : 1.5,
+        crossAxisSpacing: screenWidth > 600 ? 16 : 12,
+        mainAxisSpacing: screenWidth > 600 ? 16 : 12,
+        childAspectRatio: childAspectRatio,
       ),
       itemCount: products.length,
       itemBuilder: (context, index) {
@@ -251,6 +298,9 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
 
   // Card prodotto ottimizzata per mobile
   Widget _buildMobileProductCard(Product product) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+    
     return Consumer<CartService>(
       builder: (context, cartService, child) {
         final quantity = cartService.getQuantity(product);
@@ -264,26 +314,29 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
             },
             borderRadius: BorderRadius.circular(8),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(isSmallScreen ? 10 : 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Badge categoria e quantità
+                  // Badge categoria e quantità - layout flessibile
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          product.category,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.blue[700],
-                            fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[100],
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            product.category,
+                            style: TextStyle(
+                              fontSize: isSmallScreen ? 9 : 10,
+                              color: Colors.blue[700],
+                              fontWeight: FontWeight.bold,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),
@@ -307,31 +360,33 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 8),
                   
-                  // Nome prodotto
+                  // Nome prodotto - responsive
                   Expanded(
                     child: Text(
                       product.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: isSmallScreen ? 14 : 16,
                       ),
-                      maxLines: 2,
+                      maxLines: isSmallScreen ? 2 : 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   
-                  const SizedBox(height: 8),
+                  SizedBox(height: isSmallScreen ? 6 : 8),
                   
-                  // Prezzo e controlli quantità
+                  // Prezzo e controlli quantità - layout flessibile
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        '€${product.price.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                      Flexible(
+                        child: Text(
+                          '€${product.price.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 16 : 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
                         ),
                       ),
                       if (quantity > 0)
@@ -341,15 +396,15 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
                             IconButton(
                               onPressed: () => cartService.decrementQuantity(product),
                               icon: const Icon(Icons.remove_circle_outline),
-                              iconSize: 24,
+                              iconSize: isSmallScreen ? 20 : 24,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: isSmallScreen ? 4 : 8),
                             IconButton(
                               onPressed: () => cartService.incrementQuantity(product),
                               icon: const Icon(Icons.add_circle_outline),
-                              iconSize: 24,
+                              iconSize: isSmallScreen ? 20 : 24,
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                             ),
@@ -447,66 +502,130 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
     );
   }
 
-  // Riepilogo carrello mobile (bottom sheet)
-  Widget? _buildMobileCartSummary() {
-    final screenWidth = MediaQuery.of(context).size.width;
-    if (screenWidth > 768) return null; // Solo per mobile
-    
-    return Consumer<CartService>(
-      builder: (context, cartService, child) {
-        if (cartService.isEmpty) return const SizedBox.shrink();
+  // Pannello carrello ottimizzato per mobile - NUOVO
+  Widget _buildMobileOptimizedCartPanel() {
+    return Column(
+      children: [
+        // Header carrello con totale prominente
+        Consumer<CartService>(
+          builder: (context, cartService, child) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.blue[50],
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.shopping_cart, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Carrello',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${cartService.totalQuantity} articoli',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Totale prominente
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade200),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.euro, color: Colors.green, size: 20),
+                        const SizedBox(width: 4),
+                        Text(
+                          cartService.totalAmount.toStringAsFixed(2),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
         
-        return Container(
-          padding: const EdgeInsets.all(16),
+        // Lista carrello
+        const Expanded(child: CartWidget()),
+        
+        // Pulsanti azione - SEMPRE VISIBILI
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24), // Padding extra in basso
           decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.1),
                 blurRadius: 10,
-                offset: const Offset(0, -5),
+                offset: const Offset(0, -2),
               ),
             ],
           ),
           child: SafeArea(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${cartService.totalQuantity} articoli',
-                        style: const TextStyle(fontSize: 14, color: Colors.grey),
-                      ),
-                      Text(
-                        '€${cartService.totalAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
+            top: false,
+            child: Consumer<CartService>(
+              builder: (context, cartService, child) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Riga pulsanti principali
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: cartService.isEmpty ? null : () {
+                              cartService.clear();
+                            },
+                            icon: const Icon(Icons.clear_all),
+                            label: const Text('Svuota'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    _tabController.animateTo(1); // Vai al tab carrello
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[700],
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
-                  child: const Text('Visualizza Carrello'),
-                ),
-              ],
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton.icon(
+                            onPressed: cartService.isEmpty ? null : () => _showPaymentDialog(context),
+                            icon: const Icon(Icons.payment),
+                            label: Text(
+                              'Incassa €${cartService.totalAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 

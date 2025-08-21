@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../config/build_config.dart';
 import '../services/print_service.dart';
 import '../services/sync_service.dart';
 import 'pro_config_screen.dart';
@@ -21,16 +22,16 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('TickEat'),
-            subtitle: const Text('Versione 1.0.0 - Registratore di Cassa per Eventi'),
+            subtitle: Text('Versione 1.0.0 - ${_getAppDescription()}'),
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.blue,
+                color: _getModeColor(),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Text(
-                'BASE',
-                style: TextStyle(color: Colors.white, fontSize: 12),
+              child: Text(
+                _getModeLabel(),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
           ),
@@ -52,31 +53,44 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _showPrinterConfig(context),
           ),
           
-          const Divider(),
-          const _SectionHeader('Versione PRO'),
-          Consumer<SyncService>(
-            builder: (context, syncService, child) {
-              return ListTile(
-                leading: Icon(
-                  syncService.isConnected ? Icons.cloud_done : Icons.cloud_upload,
-                  color: syncService.isConnected ? Colors.green : null,
-                ),
-                title: Text(syncService.isConnected ? 'Modalità PRO Attiva' : 'Configura PRO'),
-                subtitle: Text(
-                  syncService.isConnected 
-                      ? 'Multi-dispositivo sincronizzato'
-                      : 'Multi-dispositivo e sincronizzazione',
-                ),
-                trailing: syncService.isConnected 
-                    ? const Icon(Icons.check_circle, color: Colors.green)
-                    : const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const ProConfigScreen()),
-                ),
-              );
-            },
-          ),
+          // Sezione PRO solo se non in modalità BASE
+          if (BuildConfig.showProFeatures) ...[
+            const Divider(),
+            const _SectionHeader('Configurazione PRO'),
+            Consumer<SyncService>(
+              builder: (context, syncService, child) {
+                return ListTile(
+                  leading: Icon(
+                    syncService.isConnected ? Icons.cloud_done : Icons.cloud_upload,
+                    color: syncService.isConnected ? Colors.green : null,
+                  ),
+                  title: Text(syncService.isConnected ? 'Modalità PRO Attiva' : 'Configura PRO'),
+                  subtitle: Text(
+                    syncService.isConnected 
+                        ? 'Multi-dispositivo sincronizzato'
+                        : 'Multi-dispositivo e sincronizzazione',
+                  ),
+                  trailing: syncService.isConnected 
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ProConfigScreen()),
+                  ),
+                );
+              },
+            ),
+          ] else ...[
+            const Divider(),
+            const _SectionHeader('Versione PRO'),
+            ListTile(
+              leading: const Icon(Icons.cloud_upload),
+              title: const Text('Aggiorna a PRO'),
+              subtitle: const Text('Multi-dispositivo e sincronizzazione'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showProUpgrade(context),
+            ),
+          ],
           
           const Divider(),
           const _SectionHeader('Supporto'),
@@ -238,6 +252,68 @@ class SettingsScreen extends StatelessWidget {
               );
             },
             child: const Text('Invia'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getAppDescription() {
+    switch (BuildConfig.appMode) {
+      case AppMode.base:
+        return 'Registratore di Cassa per Eventi';
+      case AppMode.proClient:
+        return 'Client Multi-Dispositivo';
+      case AppMode.proServer:
+        return 'Server Multi-Dispositivo';
+    }
+  }
+
+  String _getModeLabel() {
+    switch (BuildConfig.appMode) {
+      case AppMode.base:
+        return 'BASE';
+      case AppMode.proClient:
+        return 'PRO CLIENT';
+      case AppMode.proServer:
+        return 'PRO SERVER';
+    }
+  }
+
+  Color _getModeColor() {
+    switch (BuildConfig.appMode) {
+      case AppMode.base:
+        return Colors.blue;
+      case AppMode.proClient:
+        return Colors.green;
+      case AppMode.proServer:
+        return Colors.purple;
+    }
+  }
+
+  void _showProUpgrade(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('TickEat PRO'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('La versione PRO include:'),
+            SizedBox(height: 8),
+            Text('• Sincronizzazione multi-dispositivo'),
+            Text('• Gestione server centralizzato'),
+            Text('• Report consolidati'),
+            Text('• Backup automatico'),
+            SizedBox(height: 12),
+            Text('Per attivare la versione PRO, compila l\'app con le configurazioni appropriate.'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Chiudi'),
           ),
         ],
       ),

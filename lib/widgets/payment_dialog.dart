@@ -59,14 +59,26 @@ class _PaymentDialogState extends State<PaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.of(context).size;
+    final screenWidth = screenSize.width;
+    final screenHeight = screenSize.height;
+    
+    // Responsive sizing
+    final dialogWidth = screenWidth < 600 ? screenWidth * 0.9 : 400.0;
+    final dialogMaxHeight = screenHeight * 0.8;
+    final isSmallScreen = screenWidth < 600;
+    
     return Dialog(
       child: Container(
-        width: 400,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        width: dialogWidth,
+        constraints: BoxConstraints(maxHeight: dialogMaxHeight),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.all(isSmallScreen ? 16 : 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             Row(
               children: [
                 const Icon(Icons.payment, color: Colors.blue),
@@ -113,64 +125,66 @@ class _PaymentDialogState extends State<PaymentDialog> {
             const SizedBox(height: 24),
             
             // Selezione metodo di pagamento
-            const Text(
+            Text(
               'Metodo di pagamento:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: isSmallScreen ? 14 : 16, 
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: isSmallScreen ? 8 : 12),
             
-            Row(
-              children: [
-                Expanded(
-                  child: RadioListTile<PaymentMethod>(
-                    title: const Row(
-                      children: [
-                        Icon(Icons.payments),
-                        SizedBox(width: 8),
-                        Text('Contanti'),
-                      ],
-                    ),
-                    value: PaymentMethod.cash,
-                    groupValue: _selectedPaymentMethod,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedPaymentMethod = value!;
-                        _calculateChange();
-                      });
-                    },
+            // Layout responsive per i radio button
+            isSmallScreen 
+                ? Column(
+                    children: [
+                      _buildPaymentMethodTile(
+                        PaymentMethod.cash,
+                        Icons.payments,
+                        'Contanti',
+                        isSmallScreen,
+                      ),
+                      _buildPaymentMethodTile(
+                        PaymentMethod.electronic,
+                        Icons.credit_card,
+                        'Elettronico',
+                        isSmallScreen,
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: _buildPaymentMethodTile(
+                          PaymentMethod.cash,
+                          Icons.payments,
+                          'Contanti',
+                          isSmallScreen,
+                        ),
+                      ),
+                      Expanded(
+                        child: _buildPaymentMethodTile(
+                          PaymentMethod.electronic,
+                          Icons.credit_card,
+                          'Elettronico',
+                          isSmallScreen,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Expanded(
-                  child: RadioListTile<PaymentMethod>(
-                    title: const Row(
-                      children: [
-                        Icon(Icons.credit_card),
-                        SizedBox(width: 8),
-                        Text('Elettronico'),
-                      ],
-                    ),
-                    value: PaymentMethod.electronic,
-                    groupValue: _selectedPaymentMethod,
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedPaymentMethod = value!;
-                        _calculateChange();
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
             
             const SizedBox(height: 24),
             
             // Campo importo per contanti
             if (_selectedPaymentMethod == PaymentMethod.cash) ...[
-              const Text(
+              Text(
                 'Importo ricevuto:',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16, 
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: isSmallScreen ? 6 : 8),
               TextField(
                 controller: _amountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -187,13 +201,15 @@ class _PaymentDialogState extends State<PaymentDialog> {
               
               const SizedBox(height: 16),
               
-              // Pulsanti rapidi per contanti
+              // Pulsanti rapidi per contanti - layout responsive
               Wrap(
-                spacing: 8,
+                spacing: isSmallScreen ? 6 : 8,
+                runSpacing: isSmallScreen ? 6 : 8,
                 children: [
                   _QuickAmountButton(
                     amount: widget.totalAmount,
                     label: 'Importo esatto',
+                    isSmallScreen: isSmallScreen,
                     onPressed: () {
                       _amountController.text = widget.totalAmount.toStringAsFixed(2);
                       _calculateChange();
@@ -202,6 +218,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   _QuickAmountButton(
                     amount: (widget.totalAmount / 5).ceil() * 5,
                     label: '€${(widget.totalAmount / 5).ceil() * 5}',
+                    isSmallScreen: isSmallScreen,
                     onPressed: () {
                       final roundedAmount = (widget.totalAmount / 5).ceil() * 5;
                       _amountController.text = roundedAmount.toStringAsFixed(2);
@@ -211,6 +228,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
                   _QuickAmountButton(
                     amount: (widget.totalAmount / 10).ceil() * 10,
                     label: '€${(widget.totalAmount / 10).ceil() * 10}',
+                    isSmallScreen: isSmallScreen,
                     onPressed: () {
                       final roundedAmount = (widget.totalAmount / 10).ceil() * 10;
                       _amountController.text = roundedAmount.toStringAsFixed(2);
@@ -258,35 +276,140 @@ class _PaymentDialogState extends State<PaymentDialog> {
               ],
             ],
             
-            // Pulsanti azione
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Annulla'),
+            // Pulsanti azione - responsive
+            isSmallScreen
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ElevatedButton(
+                        onPressed: _canComplete ? () {
+                          widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid);
+                          Navigator.pop(context);
+                        } : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 14 : 12),
+                        ),
+                        child: Text(
+                          'Completa Pagamento',
+                          style: TextStyle(
+                            fontSize: isSmallScreen ? 14 : 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: isSmallScreen ? 14 : 12),
+                        ),
+                        child: Text(
+                          'Annulla',
+                          style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                        ),
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text('Annulla'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton(
+                          onPressed: _canComplete ? () {
+                            widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid);
+                            Navigator.pop(context);
+                          } : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          child: const Text(
+                            'Completa Pagamento',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: _canComplete ? () {
-                      widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid);
-                      Navigator.pop(context);
-                    } : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    child: const Text(
-                      'Completa Pagamento',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget helper per i radio button dei metodi di pagamento
+  Widget _buildPaymentMethodTile(
+    PaymentMethod paymentMethod,
+    IconData icon,
+    String label,
+    bool isSmallScreen,
+  ) {
+    final isSelected = _selectedPaymentMethod == paymentMethod;
+    
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedPaymentMethod = paymentMethod;
+          _calculateChange();
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.all(isSmallScreen ? 12 : 16),
+        margin: EdgeInsets.only(bottom: isSmallScreen ? 8 : 0),
+        decoration: BoxDecoration(
+          border: Border.all(
+            color: isSelected ? Colors.blue : Colors.grey.shade300,
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+          color: isSelected ? Colors.blue.shade50 : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Radio<PaymentMethod>(
+              value: paymentMethod,
+              groupValue: _selectedPaymentMethod,
+              onChanged: (value) {
+                setState(() {
+                  _selectedPaymentMethod = value!;
+                  _calculateChange();
+                });
+              },
+            ),
+            SizedBox(width: isSmallScreen ? 8 : 12),
+            Icon(
+              icon,
+              size: isSmallScreen ? 20 : 24,
+              color: isSelected ? Colors.blue : Colors.grey.shade600,
+            ),
+            SizedBox(width: isSmallScreen ? 6 : 8),
+            Flexible(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: isSmallScreen ? 14 : 16,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? Colors.blue : Colors.black87,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -298,11 +421,13 @@ class _PaymentDialogState extends State<PaymentDialog> {
 class _QuickAmountButton extends StatelessWidget {
   final double amount;
   final String label;
+  final bool isSmallScreen;
   final VoidCallback onPressed;
 
   const _QuickAmountButton({
     required this.amount,
     required this.label,
+    required this.isSmallScreen,
     required this.onPressed,
   });
 
@@ -311,9 +436,15 @@ class _QuickAmountButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 8 : 12, 
+          vertical: isSmallScreen ? 6 : 8,
+        ),
       ),
-      child: Text(label),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: isSmallScreen ? 12 : 14),
+      ),
     );
   }
 }

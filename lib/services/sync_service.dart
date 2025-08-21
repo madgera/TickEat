@@ -25,6 +25,10 @@ class SyncService extends ChangeNotifier {
   ConnectionStatus _connectionStatus = ConnectionStatus.disconnected;
   final List<Map<String, dynamic>> _pendingSyncData = [];
   DateTime? _lastSyncTime;
+  
+  // Callback per aggiornamenti remoti
+  Function(Map<String, dynamic>)? _onRemoteProductUpdate;
+  Function(Map<String, dynamic>)? _onRemoteSaleUpdate;
 
   // Getters
   ConnectionStatus get connectionStatus => _connectionStatus;
@@ -329,8 +333,12 @@ class SyncService extends ChangeNotifier {
     if (kDebugMode) {
       print('Vendita ricevuta da altro dispositivo: ${saleData['ticketId']}');
     }
-    // TODO: Aggiornare database locale
+    
+    // Notifica i listener generali
     notifyListeners();
+    
+    // Notifica specifica per vendite (per SalesService)
+    _onRemoteSaleUpdate?.call(saleData);
   }
 
   void _handleRemoteProductUpdated(Map<String, dynamic> productData) {
@@ -338,8 +346,12 @@ class SyncService extends ChangeNotifier {
     if (kDebugMode) {
       print('Prodotto aggiornato da altro dispositivo: ${productData['name']}');
     }
-    // TODO: Aggiornare database locale
+    
+    // Notifica i listener per aggiornamenti prodotti remoti
     notifyListeners();
+    
+    // Notifica specifica per prodotti (per ProductService)
+    _onRemoteProductUpdate?.call(productData);
   }
 
   void _handleSyncRequest() {
@@ -350,14 +362,55 @@ class SyncService extends ChangeNotifier {
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (_websocket != null && _connectionStatus == ConnectionStatus.connected) {
-        _websocket!.sink.add(json.encode({
-          'type': 'heartbeat',
-          'deviceId': _deviceId,
-          'timestamp': DateTime.now().toIso8601String(),
-        }));
+      if (_connectionStatus == ConnectionStatus.connected) {
+        // Heartbeat via WebSocket se disponibile
+        if (_websocket != null) {
+          try {
+            _websocket!.sink.add(json.encode({
+              'type': 'heartbeat',
+              'deviceId': _deviceId,
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+          } catch (e) {
+            if (kDebugMode) {
+              print('Errore heartbeat WebSocket: $e');
+            }
+          }
+        }
+        
+        // Polling per sincronizzazione prodotti e vendite
+        _syncProductsPolling();
+        _syncSalesPolling();
       }
     });
+  }
+
+  // Polling per sincronizzazione prodotti
+  Future<void> _syncProductsPolling() async {
+    if (!isConnected) return;
+    
+    try {
+      // Notifica il ProductService di controllare per aggiornamenti
+      _onRemoteProductUpdate?.call({'action': 'sync_check'});
+    } catch (e) {
+      if (kDebugMode) {
+        print('Errore polling prodotti: $e');
+      }
+    }
+  }
+
+  // Polling per sincronizzazione vendite
+  Future<void> _syncSalesPolling() async {
+    if (!isConnected) return;
+    
+    try {
+      // Notifica il SalesService di controllare per aggiornamenti
+      _onRemoteSaleUpdate?.call({'action': 'sync_check'});
+    } catch (e) {
+      if (kDebugMode) {
+        print('Errore polling vendite: $e');
+      }
+    }
   }
 
   // Sincronizza vendita al server
@@ -407,7 +460,18 @@ class SyncService extends ChangeNotifier {
 
   // Sincronizza prodotto al server
   Future<void> syncProduct(Product product) async {
+    if (kDebugMode) {
+      print('=== SYNC PRODOTTO AL SERVER ===');
+      print('Connesso: $isConnected');
+      print('Server URL: $_serverUrl');
+      print('Device ID: $_deviceId');
+      print('Prodotto: ${product.name}');
+    }
+    
     if (!isConnected) {
+      if (kDebugMode) {
+        print('❌ Non connesso - aggiunto alla coda per sync futura');
+      }
       _pendingSyncData.add({
         'type': 'product',
         'data': product.toMap(),
@@ -417,29 +481,71 @@ class SyncService extends ChangeNotifier {
     }
 
     try {
+      final url = '$_serverUrl/api/products';
+      final headers = {
+        'Content-Type': 'application/json',
+        'Device-ID': _deviceId!,
+      };
+      final body = json.encode(product.toMap());
+      
+      if (kDebugMode) {
+        print('POST $url');
+        print('Headers: $headers');
+        print('Body: $body');
+      }
+      
       final response = await http.post(
-        Uri.parse('$_serverUrl/api/products'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Device-ID': _deviceId!,
-        },
-        body: json.encode(product.toMap()),
+        Uri.parse(url),
+        headers: headers,
+        body: body,
       );
 
+      if (kDebugMode) {
+        print('Response Status: ${response.statusCode}');
+        print('Response Body: ${response.body}');
+      }
+
       if (response.statusCode == 201 || response.statusCode == 200) {
+        if (kDebugMode) {
+          print('✅ Prodotto sincronizzato con successo al server');
+        }
+        
         // Notifica altri dispositivi
         if (_websocket != null) {
-          _websocket!.sink.add(json.encode({
-            'type': 'product_updated',
-            'payload': product.toMap(),
-            'deviceId': _deviceId,
-          }));
+          try {
+            _websocket!.sink.add(json.encode({
+              'type': 'product_updated',
+              'payload': product.toMap(),
+              'deviceId': _deviceId,
+            }));
+            if (kDebugMode) {
+              print('✅ Notifica WebSocket inviata');
+            }
+          } catch (wsError) {
+            if (kDebugMode) {
+              print('⚠️ Errore notifica WebSocket: $wsError');
+            }
+          }
+        } else {
+          if (kDebugMode) {
+            print('⚠️ WebSocket non disponibile per notifica');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          print('❌ Errore response del server: ${response.statusCode}');
+          print('Response body: ${response.body}');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Errore sincronizzazione prodotto: $e');
+        print('❌ Errore sincronizzazione prodotto: $e');
+        print('Stack trace: ${StackTrace.current}');
       }
+    }
+    
+    if (kDebugMode) {
+      print('=== FINE SYNC PRODOTTO ===');
     }
   }
 
@@ -490,6 +596,64 @@ class SyncService extends ChangeNotifier {
     _lastSyncTime = DateTime.now();
   }
 
+  // Ottieni prodotti dal server
+  Future<List<Map<String, dynamic>>> getProductsFromServer() async {
+    if (!isConnected) {
+      return [];
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_serverUrl/api/products'),
+        headers: {'Device-ID': _deviceId!},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> productsJson = json.decode(response.body);
+        return productsJson.cast<Map<String, dynamic>>();
+      } else {
+        if (kDebugMode) {
+          print('Errore ottenendo prodotti dal server: ${response.statusCode}');
+        }
+        return [];
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Errore comunicazione server per prodotti: $e');
+      }
+      return [];
+    }
+  }
+
+  // Ottieni vendite dal server
+  Future<List<Map<String, dynamic>>> getSalesFromServer(DateTime date) async {
+    if (!isConnected) {
+      return [];
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_serverUrl/api/sales?date=${date.toIso8601String()}'),
+        headers: {'Device-ID': _deviceId!},
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> salesJson = json.decode(response.body);
+        return salesJson.cast<Map<String, dynamic>>();
+      } else {
+        if (kDebugMode) {
+          print('Errore ottenendo vendite dal server: ${response.statusCode}');
+        }
+        return [];
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Errore comunicazione server per vendite: $e');
+      }
+      return [];
+    }
+  }
+
   // Ottieni report consolidato da tutti i dispositivi
   Future<Map<String, dynamic>> getConsolidatedReport(DateTime date) async {
     if (!isConnected) {
@@ -512,6 +676,48 @@ class SyncService extends ChangeNotifier {
     }
   }
 
+  // Ottieni vendite raggruppate per dispositivo
+  Future<Map<String, dynamic>> getSalesByDevice(DateTime date) async {
+    if (!isConnected) {
+      throw Exception('Non connesso al server');
+    }
+
+    try {
+      final response = await http.get(
+        Uri.parse('$_serverUrl/api/sales/by-device?date=${date.toIso8601String()}'),
+        headers: {'Device-ID': _deviceId!},
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Errore ottenendo vendite per dispositivo');
+      }
+    } catch (e) {
+      throw Exception('Errore comunicazione server: $e');
+    }
+  }
+
+  // Registra callback per aggiornamenti prodotti remoti
+  void setOnRemoteProductUpdateCallback(Function(Map<String, dynamic>) callback) {
+    _onRemoteProductUpdate = callback;
+  }
+
+  // Rimuovi callback per aggiornamenti prodotti remoti
+  void removeOnRemoteProductUpdateCallback() {
+    _onRemoteProductUpdate = null;
+  }
+
+  // Registra callback per aggiornamenti vendite remote
+  void setOnRemoteSaleUpdateCallback(Function(Map<String, dynamic>) callback) {
+    _onRemoteSaleUpdate = callback;
+  }
+
+  // Rimuovi callback per aggiornamenti vendite remote
+  void removeOnRemoteSaleUpdateCallback() {
+    _onRemoteSaleUpdate = null;
+  }
+
   // Disconnetti e disabilita modalità Super
   Future<void> disconnect() async {
     _heartbeatTimer?.cancel();
@@ -528,6 +734,8 @@ class SyncService extends ChangeNotifier {
     _serverUrl = null;
     _deviceName = null;
     _deviceId = null;
+    _onRemoteProductUpdate = null;
+    _onRemoteSaleUpdate = null;
   }
 
   @override

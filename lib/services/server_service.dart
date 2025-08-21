@@ -24,6 +24,10 @@ class ServerService extends ChangeNotifier {
   // Dispositivi connessi
   final List<ConnectedDevice> _connectedDevices = [];
   final StorageService _storageService = StorageServiceFactory.create();
+  
+  // Callback per notificare aggiornamenti ai servizi locali
+  Function()? _onProductUpdated;
+  Function()? _onSaleUpdated;
 
   // Getters
   ServerStatus get status => _status;
@@ -172,6 +176,9 @@ class ServerService extends ChangeNotifier {
         case '/api/devices':
           await _handleGetDevices(request, response);
           break;
+        case '/api/sales/by-device':
+          await _handleGetSalesByDevice(request, response);
+          break;
         default:
           response.statusCode = HttpStatus.notFound;
           response.write(json.encode({'error': 'Endpoint non trovato'}));
@@ -202,44 +209,99 @@ class ServerService extends ChangeNotifier {
 
   // Gestisci creazione vendita
   Future<void> _handleCreateSale(HttpRequest request, HttpResponse response) async {
-    final body = await utf8.decoder.bind(request).join();
-    final data = json.decode(body);
+    if (kDebugMode) {
+      print('=== SERVER: RICEVUTA RICHIESTA VENDITA ===');
+      print('Method: ${request.method}');
+      print('Path: ${request.uri.path}');
+      print('Headers: ${request.headers}');
+    }
+    
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      if (kDebugMode) {
+        print('Body ricevuto: $body');
+      }
+      
+      final data = json.decode(body);
+      if (kDebugMode) {
+        print('Dati parsed: $data');
+      }
 
-    // Converti in Sale object
-    final saleItems = (data['items'] as List).map((item) => SaleItem(
-      productId: item['productId'],
-      productName: item['productName'],
-      unitPrice: item['unitPrice'],
-      quantity: item['quantity'],
-      totalPrice: item['totalPrice'],
-    )).toList();
+      // Converti in Sale object con gestione errori migliore
+      final saleItems = (data['items'] as List).map((item) => SaleItem(
+        productId: item['productId']?.toInt() ?? 0,
+        productName: item['productName']?.toString() ?? '',
+        unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
+        quantity: item['quantity']?.toInt() ?? 0,
+        totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
+      )).toList();
 
-    final sale = Sale(
-      ticketId: data['ticketId'],
-      items: saleItems,
-      totalAmount: data['totalAmount'],
-      paymentMethod: PaymentMethod.values.firstWhere(
-        (e) => e.name == data['paymentMethod'],
-      ),
-      amountPaid: data['amountPaid'],
-      changeGiven: data['changeGiven'],
-      cashierName: data['cashierName'],
-      deviceId: data['deviceId'],
-      createdAt: DateTime.parse(data['createdAt']),
-    );
+      if (kDebugMode) {
+        print('Items convertiti: ${saleItems.length}');
+      }
 
-    // Salva nel database locale del server
-    await _storageService.insertSale(sale);
+      final sale = Sale(
+        ticketId: data['ticketId']?.toString() ?? '',
+        items: saleItems,
+        totalAmount: data['totalAmount']?.toDouble() ?? 0.0,
+        paymentMethod: PaymentMethod.values.firstWhere(
+          (e) => e.name == data['paymentMethod'],
+          orElse: () => PaymentMethod.cash,
+        ),
+        amountPaid: data['amountPaid']?.toDouble(),
+        changeGiven: data['changeGiven']?.toDouble(),
+        cashierName: data['cashierName']?.toString(),
+        deviceId: data['deviceId'] is String ? int.tryParse(data['deviceId']) : data['deviceId']?.toInt(),
+        createdAt: data['createdAt'] != null ? DateTime.parse(data['createdAt']) : DateTime.now(),
+      );
 
-    // Notifica altri dispositivi (se implementato WebSocket)
-    _notifyDevices('sale_created', data);
+      if (kDebugMode) {
+        print('Sale creata: ${sale.toString()}');
+      }
 
-    response.statusCode = HttpStatus.created;
-    response.write(json.encode({
-      'success': true,
-      'ticketId': sale.ticketId,
-      'message': 'Vendita sincronizzata con successo',
-    }));
+      // Salva nel database locale del server
+      final saleId = await _storageService.insertSale(sale);
+      if (kDebugMode) {
+        print('✅ Vendita inserita nel database con ID: $saleId');
+      }
+
+      // Notifica il SalesService locale per aggiornare l'UI
+      _onSaleUpdated?.call();
+      if (kDebugMode) {
+        print('📢 Notificato SalesService locale');
+      }
+
+      // Notifica altri dispositivi (se implementato WebSocket)
+      _notifyDevices('sale_created', data);
+
+      response.statusCode = HttpStatus.created;
+      final responseBody = json.encode({
+        'success': true,
+        'ticketId': sale.ticketId,
+        'message': 'Vendita sincronizzata con successo',
+        'saleId': saleId,
+      });
+      
+      response.write(responseBody);
+      if (kDebugMode) {
+        print('✅ Response vendita inviata: $responseBody');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ Errore gestendo richiesta vendita: $e');
+        print('Stack trace: $stackTrace');
+      }
+      
+      response.statusCode = HttpStatus.internalServerError;
+      response.write(json.encode({
+        'success': false,
+        'error': 'Errore interno server: $e',
+      }));
+    }
+    
+    if (kDebugMode) {
+      print('=== FINE GESTIONE RICHIESTA VENDITA ===');
+    }
   }
 
   // Gestisci ottenimento vendite
@@ -272,32 +334,87 @@ class ServerService extends ChangeNotifier {
 
   // Gestisci creazione prodotto
   Future<void> _handleCreateProduct(HttpRequest request, HttpResponse response) async {
-    final body = await utf8.decoder.bind(request).join();
-    final data = json.decode(body);
-
-    final product = Product(
-      id: data['id'],
-      name: data['name'],
-      price: data['price'],
-      category: data['category'],
-      isActive: data['is_active'] == 1,
-      description: data['description'],
-    );
-
-    if (product.id == null) {
-      await _storageService.insertProduct(product);
-    } else {
-      await _storageService.updateProduct(product);
+    if (kDebugMode) {
+      print('=== SERVER: RICEVUTA RICHIESTA PRODOTTO ===');
+      print('Method: ${request.method}');
+      print('Path: ${request.uri.path}');
+      print('Headers: ${request.headers}');
     }
+    
+    try {
+      final body = await utf8.decoder.bind(request).join();
+      if (kDebugMode) {
+        print('Body ricevuto: $body');
+      }
+      
+      final data = json.decode(body);
+      if (kDebugMode) {
+        print('Dati parsed: $data');
+      }
 
-    // Notifica altri dispositivi
-    _notifyDevices('product_updated', data);
+      final product = Product(
+        id: data['id'],
+        name: data['name'],
+        price: data['price']?.toDouble() ?? 0.0,
+        category: data['category'],
+        isActive: data['is_active'] == 1,
+        description: data['description'],
+        createdAt: data['created_at'] != null ? DateTime.parse(data['created_at']) : null,
+        updatedAt: data['updated_at'] != null ? DateTime.parse(data['updated_at']) : null,
+      );
 
-    response.statusCode = HttpStatus.ok;
-    response.write(json.encode({
-      'success': true,
-      'message': 'Prodotto sincronizzato con successo',
-    }));
+      if (kDebugMode) {
+        print('Prodotto creato: ${product.toString()}');
+      }
+
+      if (product.id == null) {
+        final insertedId = await _storageService.insertProduct(product);
+        if (kDebugMode) {
+          print('✅ Prodotto inserito nel database con ID: $insertedId');
+        }
+      } else {
+        await _storageService.updateProduct(product);
+        if (kDebugMode) {
+          print('✅ Prodotto aggiornato nel database');
+        }
+      }
+
+      // Notifica il ProductService locale per aggiornare l'UI
+      _onProductUpdated?.call();
+      if (kDebugMode) {
+        print('📢 Notificato ProductService locale');
+      }
+
+      // Notifica altri dispositivi
+      _notifyDevices('product_updated', data);
+
+      response.statusCode = HttpStatus.ok;
+      final responseBody = json.encode({
+        'success': true,
+        'message': 'Prodotto sincronizzato con successo',
+        'productId': product.id,
+      });
+      
+      response.write(responseBody);
+      if (kDebugMode) {
+        print('✅ Response inviata: $responseBody');
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ Errore gestendo richiesta prodotto: $e');
+        print('Stack trace: $stackTrace');
+      }
+      
+      response.statusCode = HttpStatus.internalServerError;
+      response.write(json.encode({
+        'success': false,
+        'error': 'Errore interno server: $e',
+      }));
+    }
+    
+    if (kDebugMode) {
+      print('=== FINE GESTIONE RICHIESTA PRODOTTO ===');
+    }
   }
 
   // Gestisci ottenimento prodotti
@@ -362,6 +479,96 @@ class ServerService extends ChangeNotifier {
 
     response.statusCode = HttpStatus.ok;
     response.write(json.encode(devicesData));
+  }
+
+  // Gestisci ottenimento vendite raggruppate per dispositivo
+  Future<void> _handleGetSalesByDevice(HttpRequest request, HttpResponse response) async {
+    final dateParam = request.uri.queryParameters['date'];
+    DateTime date = DateTime.now();
+    
+    if (dateParam != null) {
+      date = DateTime.parse(dateParam);
+    }
+
+    final sales = await _storageService.getSalesForDate(date);
+    
+    // Raggruppa vendite per dispositivo
+    final Map<String, Map<String, dynamic>> deviceSales = {};
+    
+    for (final sale in sales) {
+      final deviceKey = sale.deviceId?.toString() ?? 'unknown';
+      
+      if (!deviceSales.containsKey(deviceKey)) {
+        // Trova il nome del dispositivo dai dispositivi connessi
+        final device = _connectedDevices.cast<ConnectedDevice?>().firstWhere(
+          (d) => d?.deviceId == deviceKey,
+          orElse: () => null,
+        );
+        
+        deviceSales[deviceKey] = {
+          'deviceId': deviceKey,
+          'deviceName': device?.deviceName ?? 'Dispositivo Sconosciuto',
+          'sales': <Map<String, dynamic>>[],
+          'totalRevenue': 0.0,
+          'totalTransactions': 0,
+          'cashTotal': 0.0,
+          'electronicTotal': 0.0,
+        };
+      }
+      
+      final saleData = {
+        'ticketId': sale.ticketId,
+        'totalAmount': sale.totalAmount,
+        'paymentMethod': sale.paymentMethod.name,
+        'amountPaid': sale.amountPaid,
+        'changeGiven': sale.changeGiven,
+        'cashierName': sale.cashierName,
+        'createdAt': sale.createdAt.toIso8601String(),
+        'items': sale.items.map((item) => {
+          'productId': item.productId,
+          'productName': item.productName,
+          'quantity': item.quantity,
+          'unitPrice': item.unitPrice,
+          'totalPrice': item.totalPrice,
+        }).toList(),
+      };
+      
+      deviceSales[deviceKey]!['sales'].add(saleData);
+      deviceSales[deviceKey]!['totalRevenue'] += sale.totalAmount;
+      deviceSales[deviceKey]!['totalTransactions']++;
+      
+      if (sale.paymentMethod == PaymentMethod.cash) {
+        deviceSales[deviceKey]!['cashTotal'] += sale.totalAmount;
+      } else {
+        deviceSales[deviceKey]!['electronicTotal'] += sale.totalAmount;
+      }
+    }
+
+    // Calcola totali generali
+    final totalRevenue = sales.fold(0.0, (total, sale) => total + sale.totalAmount);
+    final totalTransactions = sales.length;
+    final cashTotal = sales
+        .where((sale) => sale.paymentMethod == PaymentMethod.cash)
+        .fold(0.0, (total, sale) => total + sale.totalAmount);
+    final electronicTotal = sales
+        .where((sale) => sale.paymentMethod == PaymentMethod.electronic)
+        .fold(0.0, (total, sale) => total + sale.totalAmount);
+
+    final responseData = {
+      'date': date.toIso8601String(),
+      'summary': {
+        'totalRevenue': totalRevenue,
+        'totalTransactions': totalTransactions,
+        'cashTotal': cashTotal,
+        'electronicTotal': electronicTotal,
+        'devicesCount': deviceSales.length,
+      },
+      'deviceSales': deviceSales.values.toList(),
+      'connectedDevices': _connectedDevices.length,
+    };
+
+    response.statusCode = HttpStatus.ok;
+    response.write(json.encode(responseData));
   }
 
   // Registra un dispositivo
@@ -485,6 +692,16 @@ class ServerService extends ChangeNotifier {
     await prefs.remove('server_enabled');
     
     _serverAddress = null;
+  }
+
+  // Registra callback per aggiornamenti prodotti
+  void setOnProductUpdatedCallback(Function() callback) {
+    _onProductUpdated = callback;
+  }
+
+  // Registra callback per aggiornamenti vendite  
+  void setOnSaleUpdatedCallback(Function() callback) {
+    _onSaleUpdated = callback;
   }
 
   void _updateStatus(ServerStatus status) {

@@ -38,7 +38,7 @@ class PrintService {
     
     // Articoli
     for (final item in sale.items) {
-      buffer.writeln('${item.productName}');
+      buffer.writeln(item.productName);
       buffer.writeln('  ${item.quantity} x €${item.unitPrice.toStringAsFixed(2)} = €${item.totalPrice.toStringAsFixed(2)}');
     }
     
