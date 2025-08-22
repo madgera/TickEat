@@ -4,6 +4,7 @@ import '../config/build_config.dart';
 import '../services/print_service.dart';
 import '../services/sync_service.dart';
 import 'pro_config_screen.dart';
+import 'printer_config_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -50,7 +51,10 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Configura Stampante'),
             subtitle: const Text('Impostazioni stampante Bluetooth/USB'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showPrinterConfig(context),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const PrinterConfigScreen()),
+            ),
           ),
           
           // Sezione PRO solo se non in modalità BASE
@@ -76,6 +80,31 @@ class SettingsScreen extends StatelessWidget {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const ProConfigScreen()),
+                  ),
+                );
+              },
+            ),
+            
+            // Configurazione Stampante
+            Consumer<PrintService>(
+              builder: (context, printService, child) {
+                return ListTile(
+                  leading: Icon(
+                    printService.isConnected ? Icons.print : Icons.print_disabled,
+                    color: printService.isConnected ? Colors.green : Colors.orange,
+                  ),
+                  title: const Text('Configurazione Stampante'),
+                  subtitle: Text(
+                    printService.isConnected 
+                        ? 'Stampante connessa (${printService.printerType})'
+                        : 'Configurazione stampante termica',
+                  ),
+                  trailing: printService.isConnected 
+                      ? const Icon(Icons.check_circle, color: Colors.green)
+                      : const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const PrinterConfigScreen()),
                   ),
                 );
               },
@@ -161,29 +190,6 @@ class SettingsScreen extends StatelessWidget {
         ),
       );
     }
-  }
-
-  void _showPrinterConfig(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Configurazione Stampante'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Configurazione stampante termica'),
-            SizedBox(height: 16),
-            Text('Funzionalità disponibile in una versione futura.'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
   }
 
 

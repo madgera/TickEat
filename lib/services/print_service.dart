@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/sale.dart';
 
-class PrintService {
+class PrintService extends ChangeNotifier {
   static final PrintService _instance = PrintService._internal();
   PrintService._internal();
   factory PrintService() => _instance;
@@ -146,9 +146,11 @@ class PrintService {
       await Future.delayed(const Duration(milliseconds: 1000));
       
       _isConnected = true;
+      notifyListeners();
       return true;
     } catch (e) {
       _isConnected = false;
+      notifyListeners();
       return false;
     }
   }
@@ -157,6 +159,7 @@ class PrintService {
   Future<bool> configurePrinter({
     String? bluetoothAddress,
     String? usbPath,
+    String? networkAddress,
   }) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -171,8 +174,14 @@ class PrintService {
         _printerType = 'usb';
         await prefs.setString('printer_address', usbPath);
         await prefs.setString('printer_type', 'usb');
+      } else if (networkAddress != null) {
+        _printerAddress = networkAddress;
+        _printerType = 'network';
+        await prefs.setString('printer_address', networkAddress);
+        await prefs.setString('printer_type', 'network');
       }
       
+      notifyListeners();
       return true;
     } catch (e) {
       return false;
