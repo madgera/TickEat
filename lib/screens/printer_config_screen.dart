@@ -10,6 +10,7 @@ import 'dart:async';
 import 'dart:io';
 import '../services/print_service.dart';
 import '../models/sale.dart';
+import '../models/fiscal_data.dart';
 
 class PrinterConfigScreen extends StatefulWidget {
   const PrinterConfigScreen({super.key});
@@ -1591,6 +1592,7 @@ class _PrinterConfigScreenState extends State<PrinterConfigScreen> {
             quantity: 1,
             unitPrice: 10.00,
             totalPrice: 10.00,
+            vatCalculation: VatCalculation.fromGross(10.00, VatRate.standard),
           ),
           SaleItem(
             productId: 2,
@@ -1598,6 +1600,7 @@ class _PrinterConfigScreenState extends State<PrinterConfigScreen> {
             quantity: 2,
             unitPrice: 5.50,
             totalPrice: 11.00,
+            vatCalculation: VatCalculation.fromGross(11.00, VatRate.standard),
           ),
         ],
         totalAmount: 21.00,
@@ -1609,7 +1612,12 @@ class _PrinterConfigScreenState extends State<PrinterConfigScreen> {
         deviceId: 1,
       );
       
-      final success = await printService.printTicket(testSale);
+      final success = await printService.printTicket(
+        testSale,
+        lotteryCode: 'LTR123456789',
+        fiscalDocumentId: 'DOC${DateTime.now().millisecondsSinceEpoch}',
+        registryNumber: '${DateTime.now().day.toString().padLeft(2, '0')}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().year}001',
+      );
       
       if (success) {
         _showMessage('Stampa di test completata!');

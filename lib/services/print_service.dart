@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tickeat/models/fiscal_data.dart';
 import '../models/sale.dart';
 
 class PrintService extends ChangeNotifier {
@@ -13,7 +14,7 @@ class PrintService extends ChangeNotifier {
   String? _printerType; // 'bluetooth' o 'usb'
   bool _isConnected = false;
   
-  String generateTicketContent(Sale sale) {
+  String generateTicketContent(Sale sale, {String? lotteryCode, String? fiscalDocumentId, String? registryNumber}) {
     final buffer = StringBuffer();
     final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
     
@@ -36,13 +37,24 @@ class PrintService extends ChangeNotifier {
     buffer.writeln('');
     buffer.writeln('================================');
     
-    // Articoli
+    // Articoli con dettaglio IVA
+    double totalNet = 0.0;
+    double totalVat = 0.0;
+    
     for (final item in sale.items) {
       buffer.writeln(item.productName);
       buffer.writeln('  ${item.quantity} x €${item.unitPrice.toStringAsFixed(2)} = €${item.totalPrice.toStringAsFixed(2)}');
+      
+      // Aggiungi informazioni IVA se disponibili
+      totalNet += item.vatCalculation.netAmount;
+      totalVat += item.vatCalculation.vatAmount;
+      
+      buffer.writeln('    (IVA ${item.vatCalculation.vatRate.rate.toStringAsFixed(1)}%: €${item.vatCalculation.vatAmount.toStringAsFixed(2)})');
     }
     
     buffer.writeln('--------------------------------');
+    buffer.writeln('Imponibile: €${totalNet.toStringAsFixed(2)}');
+    buffer.writeln('IVA: €${totalVat.toStringAsFixed(2)}');
     buffer.writeln('TOTALE: €${sale.totalAmount.toStringAsFixed(2)}');
     buffer.writeln('');
     
@@ -60,8 +72,35 @@ class PrintService extends ChangeNotifier {
     }
     
     buffer.writeln('');
+    
+    // Informazioni documento fiscale
+    if (fiscalDocumentId != null || registryNumber != null) {
+      buffer.writeln('--------------------------------');
+      buffer.writeln('     DOCUMENTO FISCALE');
+      if (registryNumber != null) {
+        buffer.writeln('  Numero Registro: $registryNumber');
+      }
+      if (fiscalDocumentId != null) {
+        buffer.writeln('  ID Documento: $fiscalDocumentId');
+      }
+      buffer.writeln('--------------------------------');
+      buffer.writeln('');
+    }
+    
+    // Lotteria scontrini
+    if (lotteryCode != null) {
+      buffer.writeln('********************************');
+      buffer.writeln('    LOTTERIA DEGLI SCONTRINI');
+      buffer.writeln('      Codice: $lotteryCode');
+      buffer.writeln('********************************');
+      buffer.writeln('');
+    }
+    
     buffer.writeln('================================');
     buffer.writeln('      Grazie per la visita!');
+    buffer.writeln('');
+    buffer.writeln('  Documento fiscale valido');
+    buffer.writeln('    ai fini della legge');
     buffer.writeln('================================');
     buffer.writeln('');
     buffer.writeln('');
@@ -70,9 +109,14 @@ class PrintService extends ChangeNotifier {
     return buffer.toString();
   }
 
-  Future<bool> printTicket(Sale sale) async {
+  Future<bool> printTicket(Sale sale, {String? lotteryCode, String? fiscalDocumentId, String? registryNumber}) async {
     try {
-      final ticketContent = generateTicketContent(sale);
+      final ticketContent = generateTicketContent(
+        sale, 
+        lotteryCode: lotteryCode,
+        fiscalDocumentId: fiscalDocumentId,
+        registryNumber: registryNumber,
+      );
       
       // Debug: sempre stampa nel console
       if (kDebugMode) {

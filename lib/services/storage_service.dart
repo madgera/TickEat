@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/product.dart';
 import '../models/sale.dart';
+import '../models/fiscal_data.dart';
 import '../database/database_helper.dart';
 
 abstract class StorageService {
@@ -14,6 +15,19 @@ abstract class StorageService {
   Future<List<Sale>> getAllSales();
   Future<void> resetDailyData();
   Future<void> close();
+  
+  // Metodi fiscali
+  Future<void> saveFiscalConfiguration(Map<String, dynamic> config);
+  Future<Map<String, dynamic>?> getFiscalConfiguration();
+  Future<int> saveFiscalDocument(FiscalDocument document);
+  Future<List<FiscalDocument>> getFiscalDocumentsForDate(DateTime date);
+  Future<List<FiscalDocument>> getFiscalDocumentsBetweenDates(DateTime startDate, DateTime endDate);
+  Future<void> markDocumentAsTransmitted(String documentId, DateTime transmissionDate);
+  Future<int> saveFiscalJournal(FiscalJournal journal);
+  Future<FiscalJournal?> getFiscalJournalForDate(DateTime date);
+  Future<FiscalJournal?> getFiscalJournalById(String journalId);
+  Future<int> getDailyDocumentCount(DateTime date);
+  Future<void> updateDailyDocumentCount(DateTime date, int count);
 }
 
 class DatabaseStorageService implements StorageService {
@@ -67,6 +81,63 @@ class DatabaseStorageService implements StorageService {
   @override
   Future<void> close() async {
     await _databaseHelper.close();
+  }
+
+  // === IMPLEMENTAZIONI METODI FISCALI ===
+
+  @override
+  Future<void> saveFiscalConfiguration(Map<String, dynamic> config) async {
+    await _databaseHelper.saveFiscalConfiguration(config);
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getFiscalConfiguration() async {
+    return await _databaseHelper.getFiscalConfiguration();
+  }
+
+  @override
+  Future<int> saveFiscalDocument(FiscalDocument document) async {
+    return await _databaseHelper.saveFiscalDocument(document);
+  }
+
+  @override
+  Future<List<FiscalDocument>> getFiscalDocumentsForDate(DateTime date) async {
+    return await _databaseHelper.getFiscalDocumentsForDate(date);
+  }
+
+  @override
+  Future<List<FiscalDocument>> getFiscalDocumentsBetweenDates(DateTime startDate, DateTime endDate) async {
+    return await _databaseHelper.getFiscalDocumentsBetweenDates(startDate, endDate);
+  }
+
+  @override
+  Future<void> markDocumentAsTransmitted(String documentId, DateTime transmissionDate) async {
+    await _databaseHelper.markDocumentAsTransmitted(documentId, transmissionDate);
+  }
+
+  @override
+  Future<int> saveFiscalJournal(FiscalJournal journal) async {
+    return await _databaseHelper.saveFiscalJournal(journal);
+  }
+
+  @override
+  Future<FiscalJournal?> getFiscalJournalForDate(DateTime date) async {
+    return await _databaseHelper.getFiscalJournalForDate(date);
+  }
+
+  @override
+  Future<FiscalJournal?> getFiscalJournalById(String journalId) async {
+    return await _databaseHelper.getFiscalJournalById(journalId);
+  }
+
+  @override
+  Future<int> getDailyDocumentCount(DateTime date) async {
+    return await _databaseHelper.getDailyDocumentCount(date);
+  }
+
+  @override
+  Future<void> updateDailyDocumentCount(DateTime date, int count) async {
+    await _databaseHelper.updateDailyDocumentCount(date, count);
   }
 }
 
@@ -198,6 +269,94 @@ class MemoryStorageService implements StorageService {
   @override
   Future<void> close() async {
     // Niente da fare per la memoria
+  }
+
+  // === STUB METODI FISCALI (per compatibilità web) ===
+
+  @override
+  Future<void> saveFiscalConfiguration(Map<String, dynamic> config) async {
+    // Stub per web - in produzione potresti usare localStorage
+    if (kDebugMode) {
+      print('MemoryStorageService: saveFiscalConfiguration non implementato');
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getFiscalConfiguration() async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getFiscalConfiguration non implementato');
+    }
+    return null;
+  }
+
+  @override
+  Future<int> saveFiscalDocument(FiscalDocument document) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: saveFiscalDocument non implementato');
+    }
+    return 0;
+  }
+
+  @override
+  Future<List<FiscalDocument>> getFiscalDocumentsForDate(DateTime date) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getFiscalDocumentsForDate non implementato');
+    }
+    return [];
+  }
+
+  @override
+  Future<List<FiscalDocument>> getFiscalDocumentsBetweenDates(DateTime startDate, DateTime endDate) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getFiscalDocumentsBetweenDates non implementato');
+    }
+    return [];
+  }
+
+  @override
+  Future<void> markDocumentAsTransmitted(String documentId, DateTime transmissionDate) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: markDocumentAsTransmitted non implementato');
+    }
+  }
+
+  @override
+  Future<int> saveFiscalJournal(FiscalJournal journal) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: saveFiscalJournal non implementato');
+    }
+    return 0;
+  }
+
+  @override
+  Future<FiscalJournal?> getFiscalJournalForDate(DateTime date) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getFiscalJournalForDate non implementato');
+    }
+    return null;
+  }
+
+  @override
+  Future<FiscalJournal?> getFiscalJournalById(String journalId) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getFiscalJournalById non implementato');
+    }
+    return null;
+  }
+
+  @override
+  Future<int> getDailyDocumentCount(DateTime date) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: getDailyDocumentCount non implementato');
+    }
+    return 0;
+  }
+
+  @override
+  Future<void> updateDailyDocumentCount(DateTime date, int count) async {
+    if (kDebugMode) {
+      print('MemoryStorageService: updateDailyDocumentCount non implementato');
+    }
   }
 }
 

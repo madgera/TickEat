@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:intl/intl.dart';
+import 'package:tickeat/models/fiscal_data.dart';
 import 'dart:io';
 import 'dart:convert';
 import '../models/daily_report.dart';

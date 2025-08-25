@@ -1,4 +1,5 @@
 import 'sale.dart';
+import 'fiscal_data.dart';
 
 class DailyReport {
   final DateTime date;

@@ -1,4 +1,6 @@
-enum PaymentMethod { cash, electronic }
+import 'fiscal_data.dart';
+
+// Rimuovo l'enum locale e uso quello da fiscal_data.dart
 
 class Sale {
   final int? id;
@@ -71,6 +73,7 @@ class SaleItem {
   final double unitPrice;
   final int quantity;
   final double totalPrice;
+  final VatCalculation vatCalculation; // Calcolo IVA per questo item
 
   SaleItem({
     this.id,
@@ -80,6 +83,7 @@ class SaleItem {
     required this.unitPrice,
     required this.quantity,
     required this.totalPrice,
+    required this.vatCalculation,
   });
 
   Map<String, dynamic> toMap() {
@@ -91,10 +95,25 @@ class SaleItem {
       'unit_price': unitPrice,
       'quantity': quantity,
       'total_price': totalPrice,
+      'net_amount': vatCalculation.netAmount,
+      'vat_amount': vatCalculation.vatAmount,
+      'vat_rate': vatCalculation.vatRate.rate,
     };
   }
 
   factory SaleItem.fromMap(Map<String, dynamic> map) {
+    final vatRate = VatRate.values.firstWhere(
+      (rate) => rate.rate == (map['vat_rate'] ?? 22.0),
+      orElse: () => VatRate.standard,
+    );
+    
+    final vatCalculation = VatCalculation(
+      netAmount: map['net_amount']?.toDouble() ?? 0.0,
+      vatAmount: map['vat_amount']?.toDouble() ?? 0.0,
+      grossAmount: map['total_price']?.toDouble() ?? 0.0,
+      vatRate: vatRate,
+    );
+    
     return SaleItem(
       id: map['id']?.toInt(),
       saleId: map['sale_id']?.toInt(),
@@ -103,6 +122,7 @@ class SaleItem {
       unitPrice: map['unit_price']?.toDouble() ?? 0.0,
       quantity: map['quantity']?.toInt() ?? 0,
       totalPrice: map['total_price']?.toDouble() ?? 0.0,
+      vatCalculation: vatCalculation,
     );
   }
 

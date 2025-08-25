@@ -8,6 +8,7 @@ import 'services/sales_service.dart';
 import 'services/sync_service.dart';
 import 'services/server_service.dart';
 import 'services/print_service.dart';
+import 'services/fiscal_service.dart';
 import 'screens/main_screen.dart';
 
 void main() {
@@ -34,6 +35,7 @@ class _TickEatAppState extends State<TickEatApp> {
   late ProductService _productService;
   late SalesService _salesService;
   late PrintService _printService;
+  late FiscalService _fiscalService;
   SyncService? _syncService;      // Solo per PRO modes
   ServerService? _serverService;  // Solo per PRO SERVER mode
 
@@ -43,6 +45,15 @@ class _TickEatAppState extends State<TickEatApp> {
     _productService = ProductService();
     _salesService = SalesService();
     _printService = PrintService();
+    _fiscalService = FiscalService();
+    
+    // Inizializza servizio fiscale
+    _fiscalService.initialize().catchError((error) {
+      if (kDebugMode) {
+        print('Errore inizializzazione servizio fiscale: $error');
+        print('L\'app continuerà senza funzionalità fiscali fino alla configurazione');
+      }
+    });
     
     // Inizializzazione condizionale basata sulla modalità
     _initializeByMode();
@@ -93,6 +104,7 @@ class _TickEatAppState extends State<TickEatApp> {
     _productService.dispose();
     _salesService.dispose();
     _printService.dispose();
+    _fiscalService.dispose();
     _syncService?.dispose();
     _serverService?.dispose();
     super.dispose();
@@ -103,9 +115,10 @@ class _TickEatAppState extends State<TickEatApp> {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: _productService),
-        ChangeNotifierProvider(create: (_) => CartService()),
         ChangeNotifierProvider.value(value: _salesService),
+        ChangeNotifierProvider(create: (_) => CartService()),
         ChangeNotifierProvider.value(value: _printService),
+        ChangeNotifierProvider.value(value: _fiscalService),
         // Providers condizionali basati sulla modalità build
         if (_syncService != null)
           ChangeNotifierProvider.value(value: _syncService!),

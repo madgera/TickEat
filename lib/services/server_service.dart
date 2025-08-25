@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 import '../models/sale.dart';
 import '../models/product.dart';
+import '../models/fiscal_data.dart';
 import '../models/daily_report.dart';
 import 'storage_service.dart';
 
@@ -228,13 +229,25 @@ class ServerService extends ChangeNotifier {
       }
 
       // Converti in Sale object con gestione errori migliore
-      final saleItems = (data['items'] as List).map((item) => SaleItem(
-        productId: item['productId']?.toInt() ?? 0,
-        productName: item['productName']?.toString() ?? '',
-        unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
-        quantity: item['quantity']?.toInt() ?? 0,
-        totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
-      )).toList();
+      final saleItems = (data['items'] as List).map((item) {
+        final vatRate = VatRate.values.firstWhere(
+          (rate) => rate.rate == (item['vatRate'] ?? 22.0),
+          orElse: () => VatRate.standard,
+        );
+        final vatCalculation = VatCalculation.fromGross(
+          item['totalPrice']?.toDouble() ?? 0.0, 
+          vatRate
+        );
+        
+        return SaleItem(
+          productId: item['productId']?.toInt() ?? 0,
+          productName: item['productName']?.toString() ?? '',
+          unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
+          quantity: item['quantity']?.toInt() ?? 0,
+          totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
+          vatCalculation: vatCalculation,
+        );
+      }).toList();
 
       if (kDebugMode) {
         print('Items convertiti: ${saleItems.length}');

@@ -1,3 +1,5 @@
+import 'fiscal_data.dart';
+
 class Product {
   final int? id;
   final String name;
@@ -5,6 +7,7 @@ class Product {
   final String category;
   final bool isActive;
   final String? description;
+  final VatRate vatRate;  // Aliquota IVA del prodotto
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -15,6 +18,7 @@ class Product {
     required this.category,
     this.isActive = true,
     this.description,
+    this.vatRate = VatRate.standard,  // IVA standard di default
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : createdAt = createdAt ?? DateTime.now(),
@@ -28,6 +32,7 @@ class Product {
       'category': category,
       'is_active': isActive ? 1 : 0,
       'description': description,
+      'vat_rate': vatRate.rate,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
     };
@@ -41,6 +46,10 @@ class Product {
       category: map['category'] ?? '',
       isActive: map['is_active'] == 1,
       description: map['description'],
+      vatRate: VatRate.values.firstWhere(
+        (rate) => rate.rate == (map['vat_rate'] ?? 22.0),
+        orElse: () => VatRate.standard,
+      ),
       createdAt: DateTime.parse(map['created_at']),
       updatedAt: DateTime.parse(map['updated_at']),
     );
@@ -53,6 +62,7 @@ class Product {
     String? category,
     bool? isActive,
     String? description,
+    VatRate? vatRate,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -63,6 +73,7 @@ class Product {
       category: category ?? this.category,
       isActive: isActive ?? this.isActive,
       description: description ?? this.description,
+      vatRate: vatRate ?? this.vatRate,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );

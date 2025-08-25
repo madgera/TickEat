@@ -3,8 +3,10 @@ import 'package:provider/provider.dart';
 import '../config/build_config.dart';
 import '../services/print_service.dart';
 import '../services/sync_service.dart';
+import '../services/fiscal_service.dart';
 import 'pro_config_screen.dart';
 import 'printer_config_screen.dart';
+import 'fiscal_status_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -35,6 +37,32 @@ class SettingsScreen extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
+          ),
+          
+          const Divider(),
+          const _SectionHeader('Conformità Fiscale'),
+          Consumer<FiscalService>(
+            builder: (context, fiscalService, child) {
+              return ListTile(
+                leading: Icon(
+                  fiscalService.isConfigured ? Icons.security : Icons.warning,
+                  color: fiscalService.isConfigured ? Colors.green : Colors.orange,
+                ),
+                title: const Text('Configurazione Fiscale'),
+                subtitle: Text(
+                  fiscalService.isConfigured 
+                      ? 'Sistema conforme RT - Agenzia delle Entrate'
+                      : 'Configurazione richiesta per conformità fiscale',
+                ),
+                trailing: fiscalService.isConfigured 
+                    ? const Icon(Icons.check_circle, color: Colors.green)
+                    : const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FiscalStatusScreen()),
+                ),
+              );
+            },
           ),
           
           const Divider(),

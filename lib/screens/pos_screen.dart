@@ -5,7 +5,8 @@ import '../services/cart_service.dart';
 import '../services/sales_service.dart';
 import '../services/print_service.dart';
 import '../models/product.dart';
-import '../models/sale.dart';
+
+import '../models/fiscal_data.dart';
 
 import '../widgets/cart_widget.dart';
 import '../widgets/payment_dialog.dart';
@@ -645,34 +646,45 @@ class _PosScreenState extends State<PosScreen> with TickerProviderStateMixin {
       context: context,
       builder: (context) => PaymentDialog(
         totalAmount: context.read<CartService>().totalAmount,
-        onPaymentCompleted: (paymentMethod, amountPaid) async {
-          await _processPayment(context, paymentMethod, amountPaid);
+        onPaymentCompleted: (paymentMethod, amountPaid, customerFiscalCode) async {
+          await _processPayment(context, paymentMethod, amountPaid, customerFiscalCode);
         },
       ),
     );
   }
 
-  Future<void> _processPayment(BuildContext context, PaymentMethod paymentMethod, double? amountPaid) async {
+  Future<void> _processPayment(BuildContext context, PaymentMethod paymentMethod, double? amountPaid, String? customerFiscalCode) async {
     try {
       final cartService = context.read<CartService>();
       final salesService = context.read<SalesService>();
       final printService = PrintService();
 
       // Processa il pagamento
-      final ticketId = await salesService.processPayment(
+      final paymentResult = await salesService.processPayment(
         cartItems: cartService.items,
         paymentMethod: paymentMethod,
         amountPaid: amountPaid,
         cashierName: 'Operatore', // TODO: Implementare gestione utenti
         deviceId: 1, // TODO: Implementare gestione dispositivi
+        customerFiscalCode: customerFiscalCode,
       );
+
+      final ticketId = paymentResult['ticketId'] as String;
+      final fiscalDocumentId = paymentResult['fiscalDocumentId'] as String?;
+      final registryNumber = paymentResult['registryNumber'] as String?;
+      final lotteryCode = paymentResult['lotteryCode'] as String?;
 
       // Ottieni la vendita per stampare il biglietto
       final todaySales = await salesService.getTodaySales();
       final sale = todaySales.firstWhere((s) => s.ticketId == ticketId);
 
-      // Stampa il biglietto
-      final printSuccess = await printService.printTicket(sale);
+      // Stampa il biglietto con le informazioni fiscali
+      final printSuccess = await printService.printTicket(
+        sale,
+        lotteryCode: lotteryCode,
+        fiscalDocumentId: fiscalDocumentId,
+        registryNumber: registryNumber,
+      );
 
       // Svuota il carrello
       cartService.clear();

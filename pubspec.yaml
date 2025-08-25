@@ -47,6 +47,9 @@ dependencies:
   uuid: ^4.3.3
   shared_preferences: ^2.2.2
 
+  # Crittografia per conformità fiscale
+  crypto: ^3.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

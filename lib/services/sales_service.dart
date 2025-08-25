@@ -3,21 +3,25 @@ import 'package:uuid/uuid.dart';
 import '../models/sale.dart';
 import '../models/cart_item.dart';
 import '../models/daily_report.dart';
+import '../models/fiscal_data.dart';
 import '../config/build_config.dart';
 import 'storage_service.dart';
 import 'sync_service.dart';
+import 'fiscal_service.dart';
 
 class SalesService extends ChangeNotifier {
   final StorageService _storageService = StorageServiceFactory.create();
   final SyncService _syncService = SyncService();
+  final FiscalService _fiscalService = FiscalService();
   final Uuid _uuid = const Uuid();
 
-  Future<String> processPayment({
+  Future<Map<String, dynamic>> processPayment({
     required List<CartItem> cartItems,
     required PaymentMethod paymentMethod,
     double? amountPaid,
     String? cashierName,
     int? deviceId,
+    String? customerFiscalCode, // Per lotteria scontrini
   }) async {
     if (cartItems.isEmpty) {
       throw Exception('Il carrello è vuoto');
@@ -35,13 +39,20 @@ class SalesService extends ChangeNotifier {
 
     final ticketId = _generateTicketId();
     
-    final saleItems = cartItems.map((cartItem) => SaleItem(
-      productId: cartItem.product.id!,
-      productName: cartItem.product.name,
-      unitPrice: cartItem.product.price,
-      quantity: cartItem.quantity,
-      totalPrice: cartItem.totalPrice,
-    )).toList();
+    // Crea SaleItem con calcoli IVA
+    final saleItems = cartItems.map((cartItem) {
+      final product = cartItem.product;
+      final vatCalculation = VatCalculation.fromGross(cartItem.totalPrice, product.vatRate);
+      
+      return SaleItem(
+        productId: product.id!,
+        productName: product.name,
+        unitPrice: product.price,
+        quantity: cartItem.quantity,
+        totalPrice: cartItem.totalPrice,
+        vatCalculation: vatCalculation,
+      );
+    }).toList();
 
     final sale = Sale(
       ticketId: ticketId,
@@ -55,6 +66,38 @@ class SalesService extends ChangeNotifier {
     );
 
     await _storageService.insertSale(sale);
+    
+    // Genera documento fiscale se il sistema è configurato
+    FiscalDocument? fiscalDocument;
+    try {
+      if (_fiscalService.isConfigured) {
+        fiscalDocument = await _fiscalService.processFiscalSale(
+          cartItems: cartItems,
+          paymentMethod: paymentMethod,
+          amountPaid: amountPaid,
+          cashierName: cashierName,
+          deviceId: deviceId,
+          customerFiscalCode: customerFiscalCode,
+        );
+        
+        if (kDebugMode) {
+          print('Documento fiscale generato: ${fiscalDocument.documentId}');
+          print('Numero registro: ${fiscalDocument.registryNumber}');
+          if (fiscalDocument.lotteryCode != null) {
+            print('Codice lotteria: ${fiscalDocument.lotteryCode}');
+          }
+        }
+      } else {
+        if (kDebugMode) {
+          print('Sistema fiscale non configurato - vendita senza documento fiscale');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Errore generazione documento fiscale: $e');
+      }
+      // Non bloccare la vendita per errori fiscali
+    }
     
     // Sincronizza al server se connesso e la modalità lo supporta
     if (BuildConfig.shouldInitializeSyncService && _syncService.isConnected) {
@@ -74,7 +117,13 @@ class SalesService extends ChangeNotifier {
     
     notifyListeners();
     
-    return ticketId;
+    // Restituisce informazioni complete della vendita
+    return {
+      'ticketId': ticketId,
+      'fiscalDocumentId': fiscalDocument?.documentId,
+      'registryNumber': fiscalDocument?.registryNumber,
+      'lotteryCode': fiscalDocument?.lotteryCode,
+    };
   }
 
   String _generateTicketId() {
@@ -147,13 +196,25 @@ class SalesService extends ChangeNotifier {
       if (serverSales.isNotEmpty) {
         for (final saleData in serverSales) {
           // Converti gli items dal formato server
-          final itemsList = (saleData['items'] as List<dynamic>).map((item) => SaleItem(
-            productId: item['productId'] ?? 0,
-            productName: item['productName'] ?? '',
-            unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
-            quantity: item['quantity']?.toInt() ?? 0,
-            totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
-          )).toList();
+          final itemsList = (saleData['items'] as List<dynamic>).map((item) {
+            final vatRate = VatRate.values.firstWhere(
+              (rate) => rate.rate == (item['vatRate'] ?? 22.0),
+              orElse: () => VatRate.standard,
+            );
+            final vatCalculation = VatCalculation.fromGross(
+              item['totalPrice']?.toDouble() ?? 0.0, 
+              vatRate
+            );
+            
+            return SaleItem(
+              productId: item['productId'] ?? 0,
+              productName: item['productName'] ?? '',
+              unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
+              quantity: item['quantity']?.toInt() ?? 0,
+              totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
+              vatCalculation: vatCalculation,
+            );
+          }).toList();
           
           // Converti la struttura dati dal formato server al formato locale
           final localSaleData = {
@@ -209,13 +270,25 @@ class SalesService extends ChangeNotifier {
       
       // Altrimenti è una vendita specifica
       // Converti gli items dal formato remoto
-      final itemsList = (data['items'] as List<dynamic>).map((item) => SaleItem(
-        productId: item['productId'] ?? 0,
-        productName: item['productName'] ?? '',
-        unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
-        quantity: item['quantity']?.toInt() ?? 0,
-        totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
-      )).toList();
+      final itemsList = (data['items'] as List<dynamic>).map((item) {
+        final vatRate = VatRate.values.firstWhere(
+          (rate) => rate.rate == (item['vatRate'] ?? 22.0),
+          orElse: () => VatRate.standard,
+        );
+        final vatCalculation = VatCalculation.fromGross(
+          item['totalPrice']?.toDouble() ?? 0.0, 
+          vatRate
+        );
+        
+        return SaleItem(
+          productId: item['productId'] ?? 0,
+          productName: item['productName'] ?? '',
+          unitPrice: item['unitPrice']?.toDouble() ?? 0.0,
+          quantity: item['quantity']?.toInt() ?? 0,
+          totalPrice: item['totalPrice']?.toDouble() ?? 0.0,
+          vatCalculation: vatCalculation,
+        );
+      }).toList();
       
       // Converti la struttura dati dal formato remoto al formato locale
       final localSaleData = {

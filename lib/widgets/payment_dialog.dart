@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/sale.dart';
+import '../models/fiscal_data.dart';
 
 class PaymentDialog extends StatefulWidget {
   final double totalAmount;
-  final Function(PaymentMethod, double?) onPaymentCompleted;
+  final Function(PaymentMethod, double?, String?) onPaymentCompleted; // Aggiunto codice fiscale cliente
 
   const PaymentDialog({
     super.key,
@@ -19,8 +19,10 @@ class PaymentDialog extends StatefulWidget {
 class _PaymentDialogState extends State<PaymentDialog> {
   PaymentMethod _selectedPaymentMethod = PaymentMethod.cash;
   final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _fiscalCodeController = TextEditingController();
   double? _amountPaid;
   double? _change;
+  bool _requestLottery = false;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _PaymentDialogState extends State<PaymentDialog> {
   @override
   void dispose() {
     _amountController.dispose();
+    _fiscalCodeController.dispose();
     super.dispose();
   }
 
@@ -175,6 +178,74 @@ class _PaymentDialogState extends State<PaymentDialog> {
             
             const SizedBox(height: 24),
             
+            // Lotteria scontrini
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.yellow[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.yellow[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.confirmation_number, color: Colors.orange[700], size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Lotteria degli Scontrini',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[700],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Partecipa alla lotteria',
+                      style: TextStyle(fontSize: 14),
+                    ),
+                    subtitle: const Text(
+                      'Inserisci il codice fiscale per partecipare',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: _requestLottery,
+                    onChanged: (value) {
+                      setState(() {
+                        _requestLottery = value;
+                        if (!value) {
+                          _fiscalCodeController.clear();
+                        }
+                      });
+                    },
+                  ),
+                  if (_requestLottery) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _fiscalCodeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Codice Fiscale Cliente',
+                        hintText: 'RSSMRA80A01H501U',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9]')),
+                        LengthLimitingTextInputFormatter(16),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 16),
+            
             // Campo importo per contanti
             if (_selectedPaymentMethod == PaymentMethod.cash) ...[
               Text(
@@ -283,7 +354,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
                     children: [
                       ElevatedButton(
                         onPressed: _canComplete ? () {
-                          widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid);
+                          final customerFiscalCode = _requestLottery && _fiscalCodeController.text.isNotEmpty 
+                              ? _fiscalCodeController.text.trim().toUpperCase()
+                              : null;
+                          widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid, customerFiscalCode);
                           Navigator.pop(context);
                         } : null,
                         style: ElevatedButton.styleFrom(
@@ -328,7 +402,10 @@ class _PaymentDialogState extends State<PaymentDialog> {
                         flex: 2,
                         child: ElevatedButton(
                           onPressed: _canComplete ? () {
-                            widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid);
+                            final customerFiscalCode = _requestLottery && _fiscalCodeController.text.isNotEmpty 
+                                ? _fiscalCodeController.text.trim().toUpperCase()
+                                : null;
+                            widget.onPaymentCompleted(_selectedPaymentMethod, _amountPaid, customerFiscalCode);
                             Navigator.pop(context);
                           } : null,
                           style: ElevatedButton.styleFrom(
